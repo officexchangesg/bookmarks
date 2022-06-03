@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate, login
 from .forms import LoginForm
 from .models import Profile
 from django.contrib import messages
+from actions.utils import create_action
 
 def user_login(request):
     if request.method == 'POST':
@@ -40,7 +41,8 @@ def register(request):
             new_user.save()
             # Create the user profile
             Profile.objects.create(user=new_user)
-
+            #record user's action to create account
+            create_action(new_user, 'has created an account')
             return render(request,
                           'account/register_done.html',
                           {'new_user': new_user})
@@ -51,11 +53,40 @@ def register(request):
                   {'user_form': user_form})
 
 from django.contrib.auth.decorators import login_required
+from actions.models import Action
 @login_required
 def dashboard(request):
+    # Display all actions by default
+    actions = Action.objects.exclude(user=request.user)
+    following_ids = request.user.following.values_list('id',
+                                                       flat=True)
+    if following_ids:
+        # If user is following others, retrieve only their actions
+        actions = actions.filter(user_id__in=following_ids)
+    #actions = actions[:10]
+    #You use user__profile to join the Profile table in a single SQL query. 
+    # If you call select_related() without passing any arguments to it, 
+    # it will retrieve objects from all ForeignKey relationships. 
+    # Always limit select_related() to the relationships that will be accessed afterward.
+    #Using select_related() carefully can vastly improve execution time.
+
+    #select_related() will help you to boost performance for retrieving related objects in 
+    # one-to-many relationships. However, select_related() doesn't work for 
+    # many-to-many or many-to-one relationships (ManyToMany or reverse ForeignKey fields). 
+    # Django offers a different QuerySet method called prefetch_related that works for 
+    # many-to-many and many-to-one relationships in addition to the relationships supported by 
+    # select_related(). The prefetch_related() method performs a separate lookup for each relationship 
+    # and joins the results using Python. This method also supports the prefetching of GenericRelation 
+    # and GenericForeignKey.
+    actions = actions.select_related('user', 'user__profile')\
+                 .prefetch_related('target')[:10]
+
+
     return render(request,
                   'account/dashboard.html',
-                  {'section': 'dashboard'})
+                  {'section': 'dashboard',
+                   'actions': actions})
+
 
 from .forms import LoginForm, UserRegistrationForm, \
                    UserEditForm, ProfileEditForm
@@ -126,6 +157,8 @@ def user_follow(request):
             else:
                 Contact.objects.filter(user_from=request.user,
                                        user_to=user).delete()
+                #record user's action to follow
+                create_action(request.user, 'is following', user)
             return JsonResponse({'status':'ok'})
         except User.DoesNotExist:
             return JsonResponse({'status':'error'})
