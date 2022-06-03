@@ -24,6 +24,7 @@ class Contact(models.Model):
     def __str__(self):
         return f'{self.user_from} follows {self.user_to}'
 
+
 from django.contrib.auth import get_user_model
 # Add following field to User dynamically
 user_model = get_user_model()
@@ -33,3 +34,5 @@ user_model.add_to_class('following',
                             related_name='followers',
                             symmetrical=False))
 
+class demogithub(models.Model):
+    pass
